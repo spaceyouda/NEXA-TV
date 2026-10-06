@@ -19,22 +19,12 @@ jobs:
 
       - name: Setup Android SDK
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
 
-          ls -la "$ANDROID_HOME"
-          find "$ANDROID_HOME" -name sdkmanager -type f 2>/dev/null | head -10
+          SDKMANAGER=$(find "$ANDROID_HOME" -name sdkmanager -type f | head -1)
 
-      - name: Install Android SDK packages
-        run: |
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-
-          if [ ! -f "$SDKMANAGER" ]; then
-            SDKMANAGER=$(find "$ANDROID_HOME" -name sdkmanager -type f | head -1)
-          fi
-
-          echo "Using sdkmanager: $SDKMANAGER"
+          echo "SDKMANAGER=$SDKMANAGER"
 
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" "platform-tools"
@@ -47,11 +37,12 @@ jobs:
           gradle-version: '8.10.2'
 
       - name: Create Android project
+        shell: bash
         run: |
           mkdir -p app/src/main/java/com/nexatv
-          mkdir -p app/src/main/assets
           mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/assets
 
           cat > settings.gradle <<'EOF'
           pluginManagement {
@@ -99,4 +90,67 @@ jobs:
           }
           EOF
 
-          cat > app/src/main/AndroidManifest.xml <<'
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.INTERNET"/>
+
+              <application
+                  android:theme="@style/AppTheme"
+                  android:label="Nexa TV"
+                  android:usesCleartextTraffic="true">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+
+                  </activity>
+
+              </application>
+
+          </manifest>
+          EOF
+
+          cat > app/src/main/res/values/styles.xml <<'EOF'
+          <resources>
+              <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:statusBarColor">#0b0f14</item>
+              </style>
+          </resources>
+          EOF
+
+          cat > app/src/main/res/layout/activity_main.xml <<'EOF'
+          <FrameLayout
+              xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent">
+
+              <WebView
+                  android:id="@+id/web"
+                  android:layout_width="match_parent"
+                  android:layout_height="match_parent"/>
+
+          </FrameLayout>
+          EOF
+
+          cat > app/src/main/java/com/nexatv/MainActivity.java <<'EOF'
+          package com.nexatv;
+
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+
+          public class MainActivity extends Activity {
+
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  setContentView(R.layout.activity
