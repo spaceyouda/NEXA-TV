@@ -1,0 +1,88 @@
+name: Build Nexa TV APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Android project
+        run: |
+          git clone https://github.com/itsyebekhe/nexa.git nexa-source || true
+          mkdir -p app/src/main/java/com/nexatv app/src/main/assets app/src/main/res/layout app/src/main/res/values
+          cat > settings.gradle <<'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+          rootProject.name='NexaTV'
+          include ':app'
+          EOF
+
+          cat > build.gradle <<'EOF'
+          plugins { id 'com.android.application' version '8.7.3' apply false }
+          EOF
+
+          cat > app/build.gradle <<'EOF'
+          plugins { id 'com.android.application' }
+          android { namespace 'com.nexatv'; compileSdk 35
+            defaultConfig { applicationId 'com.nexatv'; minSdk 26; targetSdk 35; versionCode 1; versionName '1.0' }
+          }
+          EOF
+
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.INTERNET"/>
+            <application android:theme="@style/AppTheme" android:label="Nexa TV" android:usesCleartextTraffic="true">
+              <activity android:name=".MainActivity" android:exported="true">
+                <intent-filter>
+                  <action android:name="android.intent.action.MAIN"/>
+                  <category android:name="android.intent.category.LAUNCHER"/>
+                </intent-filter>
+              </activity>
+            </application>
+          </manifest>
+          EOF
+
+          cat > app/src/main/res/values/styles.xml <<'EOF'
+          <resources><style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:statusBarColor">#0b0f14</item></style></resources>
+          EOF
+
+          cat > app/src/main/res/layout/activity_main.xml <<'EOF'
+          <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent"><WebView android:id="@+id/web" android:layout_width="match_parent" android:layout_height="match_parent"/></FrameLayout>
+          EOF
+
+          cat > app/src/main/java/com/nexatv/MainActivity.java <<'EOF'
+          package com.nexatv;
+          import android.app.Activity; import android.os.Bundle; import android.webkit.*;
+          public class MainActivity extends Activity {
+            public void onCreate(Bundle b){super.onCreate(b); setContentView(R.layout.activity_main); WebView w=findViewById(R.id.web); w.getSettings().setJavaScriptEnabled(true); w.getSettings().setDomStorageEnabled(true); w.getSettings().setMediaPlaybackRequiresUserGesture(false); w.setWebViewClient(new WebViewClient()); w.loadUrl("file:///android_asset/index.html");}
+          }
+          EOF
+
+          cat > app/src/main/assets/index.html <<'EOF'
+          <!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nexa TV</title>
+          <style>*{box-sizing:border-box}body{margin:0;background:#0b0f14;color:#fff;font-family:Arial}header{padding:18px 14px;position:sticky;top:0;background:#0b0f14;z-index:2}h2{margin:0 0 12px}.tabs{display:flex;gap:7px}.tabs button,select,input,.play{border:1px solid #293543;background:#151d27;color:#fff;border-radius:11px;padding:11px}.tabs button{flex:1}.active{background:#e5f100!important;color:#111!important}.search,select{width:100%;margin-top:9px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:10px}.card{background:#131b24;border:1px solid #202b38;border-radius:13px;padding:10px}.play{width:100%;margin-top:8px}.hidden{display:none}#status{padding:0 14px;color:#8f9baa;font-size:12px}</style>
+          <header><h2>📺 Nexa TV</h2><div class="tabs"><button id="fa" onclick="mode='fa';go()">🇮🇷 فارسی</button><button id="all" onclick="mode='all';go()">🌍 همه کشورها</button><button id="adult" onclick="mode='adult';go()">🔞 +18</button></div><select id="country" class="hidden"></select><input id="q" class="search" placeholder="جستجوی کانال..." oninput="render()"></header><div id="status">در حال آماده‌سازی...</div><main id="list" class="grid"></main>
+          <script>
+          const BASE='https://iptv-org.github.io', NEXA='https://raw.githubusercontent.com/itsyebekhe/nexa/main/playlist.m3u'; let mode='fa',channels=[],countries=[];
+          async function txt(u){let r=await fetch(u);if(!r.ok)throw Error(r.status);return r.text()}
+          function parse(t){let a=[],i=null;for(let l of t.split(/\r?\n/)){if(l.startsWith('#EXTINF:'))i=l;else if(i&&l&&!l.startsWith('#')){a.push({name:(i.match(/,(.*)$/)||[])[1]||'Channel',url:l.trim()});i=null}}return a}
+          function stat(x){status.textContent=x}
+          async function go(){document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));document.getElementById(mode).classList.add('active');country.classList.toggle('hidden',mode!=='all');try{stat('در حال دریافت...');if(mode==='fa')channels=parse(await txt(NEXA));else if(mode==='all'){if(!country.value){render();stat('کشور را انتخاب کنید');return}channels=parse(await txt(BASE+'/iptv/countries/'+country.value.toLowerCase()+'.m3u'))}else{let[c,s]=await Promise.all([fetch(BASE+'/api/channels.json').then(r=>r.json()),fetch(BASE+'/api/streams.json').then(r=>r.json())]);let ids=new Set(c.filter(x=>x.is_nsfw).map(x=>x.id));channels=s.filter(x=>ids.has(x.channel)&&x.url).map(x=>({name:x.title||x.channel,url:x.url}))}stat(channels.length+' کانال');render()}catch(e){stat('خطا: '+e.message)}}
+          async function init(){countries=await fetch(BASE+'/api/countries.json').then(r=>r.json());country.innerHTML='<option value="">کشور را انتخاب کنید</option>'+countries.sort((a,b)=>a.name.localeCompare(b.name)).map(x=>'<option value="'+x.code+'">'+(x.flag||'')+' '+x.name+'</option>').join('');country.onchange=go;go()}
+          function render(){let q=document.getElementById('q').value.toLowerCase();list.innerHTML=channels.filter(x=>!q||x.name.toLowerCase().includes(q)).slice(0,500).map(x=>'<div class="card"><b>'+x.name.replace(/[<>]/g,'')+'</b><button class="play" onclick="play(\''+x.url.replace(/'/g,"%27")+'\')">▶ پخش</button></div>').join('')||'<p style="grid-column:1/-1;text-align:center">کانالی پیدا نشد</p>'}
+          function play(u){location.href=u}init()
+          </script>
+          EOF
+
+      - name: Build APK
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          gradle wrapper --gradle-version 8.10.2
+          ./gradlew assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NexaTV-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
