@@ -153,4 +153,330 @@ jobs:
               public void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
 
-                  setContentView(R.layout.activity
+                  setContentView(R.layout.activity_main);
+
+                  WebView web = findViewById(R.id.web);
+
+                  web.getSettings().setJavaScriptEnabled(true);
+                  web.getSettings().setDomStorageEnabled(true);
+                  web.getSettings().setMediaPlaybackRequiresUserGesture(false);
+
+                  web.setWebViewClient(new WebViewClient());
+
+                  web.loadUrl("file:///android_asset/index.html");
+              }
+          }
+          EOF
+
+          cat > app/src/main/assets/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html lang="fa" dir="rtl">
+          <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>Nexa TV</title>
+
+          <style>
+          *{box-sizing:border-box}
+          body{margin:0;background:#0b0f14;color:#fff;font-family:Arial}
+          header{padding:18px 14px;background:#0b0f14}
+          h2{margin:0 0 12px}
+          .tabs{display:flex;gap:7px}
+          button,select,input{border:1px solid #293543;background:#151d27;color:#fff;border-radius:11px;padding:11px}
+          button{flex:1}
+          .search,select{width:100%;margin-top:9px}
+          .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:10px}
+          .card{background:#131b24;border:1px solid #202b38;border-radius:13px;padding:10px}
+          .play{width:100%;margin-top:8px}
+          .hidden{display:none}
+          #status{padding:0 14px;color:#8f9baa;font-size:12px}
+          </style>
+          </head>
+
+          <body>
+
+          <header>
+          <h2>📺 Nexa TV</h2>
+
+          <div class="tabs">
+          <button id="fa" onclick="setMode('fa')">🇮🇷 فارسی</button>
+          <button id="all" onclick="setMode('all')">🌍 همه کشورها</button>
+          <button id="adult" onclick="setMode('adult')">🔞 +18</button>
+          </div>
+
+          <select id="country" class="hidden"></select>
+
+          <input
+          id="q"
+          class="search"
+          placeholder="جستجوی کانال..."
+          oninput="render()">
+
+          </header>
+
+          <div id="status">در حال آماده‌سازی...</div>
+          <main id="list" class="grid"></main>
+
+          <script>
+
+          const BASE = "https://iptv-org.github.io";
+          const NEXA = "https://raw.githubusercontent.com/itsyebekhe/nexa/main/playlist.m3u";
+
+          let mode = "fa";
+          let channels = [];
+          let countries = [];
+
+          function status(text) {
+              document.getElementById("status").textContent = text;
+          }
+
+          async function getText(url) {
+              const response = await fetch(url);
+
+              if (!response.ok) {
+                  throw new Error(response.status);
+              }
+
+              return response.text();
+          }
+
+          function parsePlaylist(text) {
+
+              const result = [];
+              let info = null;
+
+              for (const line of text.split(/\r?\n/)) {
+
+                  if (line.startsWith("#EXTINF:")) {
+                      info = line;
+                  }
+
+                  else if (info && line && !line.startsWith("#")) {
+
+                      const match = info.match(/,(.*)$/);
+
+                      result.push({
+                          name: match ? match[1] : "Channel",
+                          url: line.trim()
+                      });
+
+                      info = null;
+                  }
+              }
+
+              return result;
+          }
+
+          function setMode(newMode) {
+
+              mode = newMode;
+
+              document
+                  .querySelectorAll(".tabs button")
+                  .forEach(button => button.classList.remove("active"));
+
+              document.getElementById(mode).classList.add("active");
+
+              document
+                  .getElementById("country")
+                  .classList.toggle("hidden", mode !== "all");
+
+              loadChannels();
+          }
+
+          async function loadChannels() {
+
+              try {
+
+                  status("در حال دریافت...");
+
+                  if (mode === "fa") {
+
+                      channels = parsePlaylist(await getText(NEXA));
+
+                  }
+
+                  else if (mode === "all") {
+
+                      const country =
+                          document.getElementById("country").value;
+
+                      if (!country) {
+
+                          channels = [];
+                          render();
+                          status("کشور را انتخاب کنید");
+                          return;
+                      }
+
+                      channels = parsePlaylist(
+                          await getText(
+                              BASE +
+                              "/iptv/countries/" +
+                              country.toLowerCase() +
+                              ".m3u"
+                          )
+                      );
+                  }
+
+                  else {
+
+                      const channelData =
+                          await fetch(
+                              BASE + "/api/channels.json"
+                          ).then(response => response.json());
+
+                      const streamData =
+                          await fetch(
+                              BASE + "/api/streams.json"
+                          ).then(response => response.json());
+
+                      const ids = new Set(
+                          channelData
+                              .filter(channel => channel.is_nsfw)
+                              .map(channel => channel.id)
+                      );
+
+                      channels = streamData
+                          .filter(stream =>
+                              ids.has(stream.channel) &&
+                              stream.url
+                          )
+                          .map(stream => ({
+                              name: stream.title || stream.channel,
+                              url: stream.url
+                          }));
+                  }
+
+                  status(channels.length + " کانال");
+
+                  render();
+
+              } catch (error) {
+
+                  status("خطا: " + error.message);
+
+              }
+          }
+
+          async function init() {
+
+              try {
+
+                  countries =
+                      await fetch(
+                          BASE + "/api/countries.json"
+                      ).then(response => response.json());
+
+                  const select =
+                      document.getElementById("country");
+
+                  select.innerHTML =
+                      '<option value="">کشور را انتخاب کنید</option>' +
+                      countries
+                          .sort((a,b) =>
+                              a.name.localeCompare(b.name)
+                          )
+                          .map(country =>
+                              '<option value="' +
+                              country.code +
+                              '">' +
+                              (country.flag || "") +
+                              " " +
+                              country.name +
+                              "</option>"
+                          )
+                          .join("");
+
+                  select.onchange = loadChannels;
+
+                  document
+                      .getElementById("fa")
+                      .classList.add("active");
+
+                  loadChannels();
+
+              } catch (error) {
+
+                  status("خطا: " + error.message);
+
+              }
+          }
+
+          function render() {
+
+              const query =
+                  document
+                      .getElementById("q")
+                      .value
+                      .toLowerCase();
+
+              const list =
+                  document.getElementById("list");
+
+              const filtered =
+                  channels
+                      .filter(channel =>
+                          !query ||
+                          channel.name
+                              .toLowerCase()
+                              .includes(query)
+                      )
+                      .slice(0,500);
+
+              list.innerHTML =
+                  filtered.map(channel => {
+
+                      const safeName =
+                          channel.name.replace(/[<>]/g,"");
+
+                      const safeUrl =
+                          channel.url.replace(/'/g,"%27");
+
+                      return (
+                          '<div class="card">' +
+                          '<b>' + safeName + '</b>' +
+                          '<button class="play" ' +
+                          'onclick="playChannel(\'' +
+                          safeUrl +
+                          '\')">' +
+                          '▶ پخش' +
+                          '</button>' +
+                          '</div>'
+                      );
+
+                  }).join("");
+
+              if (!filtered.length) {
+
+                  list.innerHTML =
+                      '<p style="grid-column:1/-1;text-align:center">' +
+                      'کانالی پیدا نشد' +
+                      '</p>';
+              }
+          }
+
+          function playChannel(url) {
+              location.href = url;
+          }
+
+          init();
+
+          </script>
+
+          </body>
+          </html>
+          EOF
+
+      - name: Build APK
+        run: |
+          gradle --version
+          gradle wrapper --gradle-version 8.10.2
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NexaTV-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
