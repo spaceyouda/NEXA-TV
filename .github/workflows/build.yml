@@ -17,6 +17,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -46,8 +55,8 @@ jobs:
               }
           }
 
-          rootProject.name='NexaTV'
-          include ':app'
+          rootProject.name = "NexaTV"
+          include(":app")
           EOF
 
           cat > build.gradle <<'EOF'
@@ -103,7 +112,8 @@ jobs:
 
           cat > app/src/main/res/values/styles.xml <<'EOF'
           <resources>
-              <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+              <style name="AppTheme"
+                  parent="android:style/Theme.Material.Light.NoActionBar">
                   <item name="android:fontFamily">sans</item>
                   <item name="android:statusBarColor">#0b0f14</item>
               </style>
@@ -130,4 +140,69 @@ jobs:
           import android.app.Activity;
           import android.os.Bundle;
           import android.webkit.WebView;
-         
+          import android.webkit.WebViewClient;
+
+          public class MainActivity extends Activity {
+
+              @Override
+              public void onCreate(Bundle b) {
+                  super.onCreate(b);
+
+                  setContentView(R.layout.activity_main);
+
+                  WebView w = findViewById(R.id.web);
+
+                  w.getSettings().setJavaScriptEnabled(true);
+                  w.getSettings().setDomStorageEnabled(true);
+                  w.getSettings().setMediaPlaybackRequiresUserGesture(false);
+
+                  w.setWebViewClient(new WebViewClient());
+
+                  w.loadUrl("file:///android_asset/index.html");
+              }
+          }
+          EOF
+
+          cat > app/src/main/assets/index.html <<'EOF'
+          <!doctype html>
+          <html lang="fa" dir="rtl">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>Nexa TV</title>
+          <style>
+          *{box-sizing:border-box}
+          body{margin:0;background:#0b0f14;color:#fff;font-family:Arial}
+          header{padding:18px 14px;position:sticky;top:0;background:#0b0f14;z-index:2}
+          h2{margin:0 0 12px}
+          .tabs{display:flex;gap:7px}
+          .tabs button,select,input,.play{
+              border:1px solid #293543;
+              background:#151d27;
+              color:#fff;
+              border-radius:11px;
+              padding:11px
+          }
+          .tabs button{flex:1}
+          .active{background:#e5f100!important;color:#111!important}
+          .search,select{width:100%;margin-top:9px}
+          .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:10px}
+          .card{background:#131b24;border:1px solid #202b38;border-radius:13px;padding:10px}
+          .play{width:100%;margin-top:8px}
+          .hidden{display:none}
+          #status{padding:0 14px;color:#8f9baa;font-size:12px}
+          </style>
+          </head>
+
+          <body>
+
+          <header>
+          <h2>📺 Nexa TV</h2>
+
+          <div class="tabs">
+          <button id="fa" onclick="mode='fa';go()">🇮🇷 فارسی</button>
+          <button id="all" onclick="mode='all';go()">🌍 همه کشورها</button>
+          <button id="adult" onclick="mode='adult';go()">🔞 +18</button>
+          </div>
+
+          <select id="country" class="
